@@ -124,6 +124,7 @@
 "use client";
 import { Bot, User, BrainCircuit, Loader2 } from "lucide-react";
 import ReactMarkdown from "react-markdown";
+import remarkGfm from "remark-gfm";
 import { cn } from "@/lib/utils";
 
 // Đảm bảo import Message type nếu nó không nằm trong file này
@@ -165,10 +166,12 @@ export function ChatMessage({
             Internal Thought Process
           </span>
         </div>
-        {/* Sử dụng pre-wrap với text-sm để trông như một đoạn log/code */}
-        <pre className="whitespace-pre-wrap font-mono text-[11px] leading-snug text-gray-300/90">
-          {message.reasoning}
-        </pre>
+        <div className="markdown-content prose prose-invert prose-sm max-w-none">
+          <ReactMarkdown
+            remarkPlugins={[remarkGfm]}
+            children={message.reasoning || "..."}
+          />
+        </div>
       </div>
     );
   };
@@ -219,12 +222,15 @@ export function ChatMessage({
           {!isUser && renderReasoningBox()}
 
           {/* 2.2. Nội dung chính */}
-          <div className="prose prose-invert prose-sm max-w-none">
+          <div className="markdown-content prose prose-invert prose-sm max-w-none">
             {/* Nếu đang streaming và chưa có nội dung, hiển thị chấm loading */}
             {isLoading && !message.content && !message.reasoning ? (
               <Loader2 className="w-4 h-4 animate-spin text-blue-400" />
             ) : (
-              <ReactMarkdown>{message.content || "..."}</ReactMarkdown>
+              <ReactMarkdown
+                remarkPlugins={[remarkGfm]}
+                children={message.content || "..."}
+              />
             )}
           </div>
         </div>

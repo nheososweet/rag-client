@@ -1,14 +1,15 @@
 "use client";
 
-import React, { useState, useEffect, useRef, FormEvent } from 'react';
-import ReactMarkdown from 'react-markdown';
-import remarkGfm from 'remark-gfm';
+import React, { useState, useEffect, useRef, FormEvent } from "react";
+import ReactMarkdown from "react-markdown";
+import remarkGfm from "remark-gfm";
 
 // Imports từ shadcn/ui
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { ScrollArea } from "@/components/ui/scroll-area";
+import { ChatLayout } from "@/components/ui/chat-layout";
 import {
   Send,
   Loader2,
@@ -19,7 +20,7 @@ import {
   Check,
   FileText,
   ChevronDown,
-  ChevronUp
+  ChevronUp,
 } from "lucide-react";
 
 import { cn } from "@/lib/utils";
@@ -40,7 +41,7 @@ interface Source {
 
 interface Message {
   id: string;
-  role: 'user' | 'assistant';
+  role: "user" | "assistant";
   content: string;
   timestamp: number;
   sources?: Source[];
@@ -48,12 +49,12 @@ interface Message {
 }
 
 // URL API RAG
-const RAG_API_URL = "http://127.0.0.1:8000/api/v1/rag/query";
+const RAG_API_URL = "http://127.0.0.1:8080/api/v1/rag/query";
 
 // --- Component Chat RAG với Streaming ---
 export default function RAGChatPage() {
   const [messages, setMessages] = useState<Message[]>([]);
-  const [input, setInput] = useState('');
+  const [input, setInput] = useState("");
   const [isLoading, setIsLoading] = useState(false);
   const [copiedMessageId, setCopiedMessageId] = useState<string | null>(null);
 
@@ -61,18 +62,21 @@ export default function RAGChatPage() {
 
   // Auto scroll
   useEffect(() => {
-    messagesEndRef.current?.scrollIntoView({ behavior: 'auto' });
+    messagesEndRef.current?.scrollIntoView({ behavior: "auto" });
   }, [messages]);
 
   // Hàm xử lý copy
   const handleCopy = (text: string, messageId: string) => {
     if (navigator.clipboard) {
-      navigator.clipboard.writeText(text).then(() => {
-        setCopiedMessageId(messageId);
-        setTimeout(() => setCopiedMessageId(null), 2000);
-      }).catch(err => {
-        console.error('Lỗi không thể copy: ', err);
-      });
+      navigator.clipboard
+        .writeText(text)
+        .then(() => {
+          setCopiedMessageId(messageId);
+          setTimeout(() => setCopiedMessageId(null), 2000);
+        })
+        .catch((err) => {
+          console.error("Lỗi không thể copy: ", err);
+        });
     } else {
       const textArea = document.createElement("textarea");
       textArea.value = text;
@@ -82,11 +86,11 @@ export default function RAGChatPage() {
       textArea.focus();
       textArea.select();
       try {
-        document.execCommand('copy');
+        document.execCommand("copy");
         setCopiedMessageId(messageId);
         setTimeout(() => setCopiedMessageId(null), 2000);
       } catch (err) {
-        console.error('Fallback copy error: ', err);
+        console.error("Fallback copy error: ", err);
       }
       document.body.removeChild(textArea);
     }
@@ -98,12 +102,12 @@ export default function RAGChatPage() {
     if (!trimmedQuery || isLoading) return;
 
     setIsLoading(true);
-    setInput('');
+    setInput("");
 
     // 1. Tin nhắn người dùng
     const userMessage: Message = {
       id: Date.now().toString(),
-      role: 'user',
+      role: "user",
       content: trimmedQuery,
       timestamp: Date.now(),
     };
@@ -112,8 +116,8 @@ export default function RAGChatPage() {
     const assistantMessageId = (Date.now() + 1).toString();
     const assistantPlaceholder: Message = {
       id: assistantMessageId,
-      role: 'assistant',
-      content: '',
+      role: "assistant",
+      content: "",
       timestamp: Date.now(),
     };
 
@@ -122,17 +126,17 @@ export default function RAGChatPage() {
     setCopiedMessageId(null);
 
     setTimeout(() => {
-      messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
+      messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
     }, 0);
 
     try {
       const response = await fetch(RAG_API_URL, {
-        method: 'POST',
+        method: "POST",
         headers: {
-          'Content-Type': 'application/json',
-          'Accept': 'text/event-stream',
+          "Content-Type": "application/json",
+          Accept: "text/event-stream",
         },
-        body: JSON.stringify({ 
+        body: JSON.stringify({
           question: trimmedQuery,
           stream: true, // ✅ BẬT STREAMING
           top_k: 5,
@@ -149,7 +153,7 @@ export default function RAGChatPage() {
         .pipeThrough(new TextDecoderStream())
         .getReader();
 
-      let buffer = '';
+      let buffer = "";
       let retrievedSources: Source[] = [];
 
       while (true) {
@@ -157,34 +161,37 @@ export default function RAGChatPage() {
         if (done) break;
 
         buffer += value;
-        const lines = buffer.split('\n\n');
+        const lines = buffer.split("\n\n");
 
         for (let i = 0; i < lines.length - 1; i++) {
           const line = lines[i];
-          if (line.startsWith('event: done')) continue;
+          if (line.startsWith("event: done")) continue;
 
-          if (line.startsWith('data: ')) {
+          if (line.startsWith("data: ")) {
             const data = line.substring(6);
-            if (!data || data === '{}') continue;
+            if (!data || data === "{}") continue;
 
             try {
               const chunk = JSON.parse(data);
 
               // ✅ Xử lý chunks (sources) - được gửi đầu tiên
-              if (chunk.type === 'chunks' && chunk.chunks) {
+              if (chunk.type === "chunks" && chunk.chunks) {
                 retrievedSources = chunk.chunks.map((c: any) => ({
                   document_id: c.document_id || 0,
-                  chunk_id: c.chunk_id || '',
-                  content: c.content || '',
+                  chunk_id: c.chunk_id || "",
+                  content: c.content || "",
                   similarity_score: c.score || 0,
                   metadata: {
-                    filename: c.document_filename || c.doc_metadata?.filename || 'Unknown',
+                    filename:
+                      c.document_filename ||
+                      c.doc_metadata?.filename ||
+                      "Unknown",
                     chunk_index: c.doc_metadata?.chunk_index || 0,
                     total_chunks: c.doc_metadata?.total_chunks || 1,
-                    ...c.doc_metadata
-                  }
+                    ...c.doc_metadata,
+                  },
                 }));
-                
+
                 // Cập nhật sources vào message
                 setMessages((prev) =>
                   prev.map((msg) =>
@@ -195,21 +202,24 @@ export default function RAGChatPage() {
                 );
               }
               // ✅ Xử lý content chunks (answer streaming)
-              else if (chunk.type === 'content' && chunk.content) {
+              else if (chunk.type === "content" && chunk.content) {
                 setMessages((prev) =>
                   prev.map((msg) =>
                     msg.id === assistantMessageId
-                      ? { 
-                          ...msg, 
+                      ? {
+                          ...msg,
                           content: msg.content + chunk.content,
-                          sources: retrievedSources.length > 0 ? retrievedSources : msg.sources
+                          sources:
+                            retrievedSources.length > 0
+                              ? retrievedSources
+                              : msg.sources,
                         }
                       : msg
                   )
                 );
               }
               // ✅ Xử lý usage (metadata)
-              else if (chunk.type === 'done' && chunk.usage) {
+              else if (chunk.type === "done" && chunk.usage) {
                 setMessages((prev) =>
                   prev.map((msg) =>
                     msg.id === assistantMessageId
@@ -219,12 +229,15 @@ export default function RAGChatPage() {
                 );
               }
               // ✅ Xử lý lỗi
-              else if (chunk.type === 'error') {
+              else if (chunk.type === "error") {
                 console.error("Stream error chunk:", chunk.content);
                 setMessages((prev) =>
                   prev.map((msg) =>
                     msg.id === assistantMessageId
-                      ? { ...msg, content: `${msg.content}\n\n[LỖI: ${chunk.content}]` }
+                      ? {
+                          ...msg,
+                          content: `${msg.content}\n\n[LỖI: ${chunk.content}]`,
+                        }
                       : msg
                   )
                 );
@@ -243,7 +256,9 @@ export default function RAGChatPage() {
           msg.id === assistantMessageId
             ? {
                 ...msg,
-                content: `[LỖI KẾT NỐI: ${error instanceof Error ? error.message : String(error)}]`,
+                content: `[LỖI KẾT NỐI: ${
+                  error instanceof Error ? error.message : String(error)
+                }]`,
               }
             : msg
         )
@@ -340,24 +355,12 @@ export default function RAGChatPage() {
   );
 
   return (
-    <div className="flex h-screen flex-col bg-gray-950 text-gray-100 relative overflow-hidden aurora-bg">
+    <ChatLayout>
       <SpecialEffectsStyle />
 
-      {/* Header */}
-      <header className="sticky top-0 z-10 border-b border-gray-800 bg-gray-900/70 backdrop-blur supports-[backdrop-filter]:bg-gray-900/50">
-        <div className="max-w-5xl mx-auto px-4 sm:px-6 lg:px-8 py-4 flex items-center">
-          <div className="flex items-center gap-3">
-            <FileText className="w-6 h-6 text-purple-500" />
-            <h1 className="text-xl font-semibold bg-gradient-to-r from-purple-400 to-pink-400 bg-clip-text text-transparent">
-              RAG Document Assistant (Streaming)
-            </h1>
-          </div>
-        </div>
-      </header>
-
-      {/* Main */}
-      <main className="flex-1 overflow-hidden relative">
-        <ScrollArea className="h-full">
+      {/* Full width chat area */}
+      <div className="flex-1 flex flex-col overflow-hidden bg-gray-900/30">
+        <ScrollArea className="h-full overflow-auto">
           <div className="max-w-5xl mx-auto space-y-6 p-4 sm:p-6 lg:p-8 pb-8">
             {messages.length === 0 && !isLoading && (
               <RAGWelcome onPromptClick={sendRAGQuery} />
@@ -370,7 +373,7 @@ export default function RAGChatPage() {
                   message={msg}
                   isLoading={
                     isLoading &&
-                    msg.role === 'assistant' &&
+                    msg.role === "assistant" &&
                     index === messages.length - 1
                   }
                   copiedState={copiedMessageId === msg.id}
@@ -382,39 +385,38 @@ export default function RAGChatPage() {
             <div ref={messagesEndRef} className="h-1 w-full" />
           </div>
         </ScrollArea>
-        <div className="pointer-events-none absolute bottom-0 inset-x-0 h-20 bg-gradient-to-t from-gray-950 to-transparent" />
-      </main>
 
-      {/* Footer */}
-      <footer className="sticky bottom-0 z-10 border-t border-gray-800 bg-gray-900/70 backdrop-blur supports-[backdrop-filter]:bg-gray-900/50">
-        <div className="max-w-5xl mx-auto p-4 sm:p-6">
-          <form onSubmit={handleFormSubmit} className="flex gap-4">
-            <Input
-              type="text"
-              value={input}
-              onChange={(e) => setInput(e.target.value)}
-              placeholder="Hỏi về tài liệu của bạn..."
-              disabled={isLoading}
-              className="flex-1 h-12 bg-gray-800/50 border-gray-700 focus:border-purple-500 focus:ring-purple-500/20 text-base"
-            />
-            <Button
-              type="submit"
-              disabled={isLoading || !input.trim()}
-              className="h-12 px-6 bg-purple-600 hover:bg-purple-500 text-white font-medium transition-colors min-w-[100px] disabled:opacity-50"
-            >
-              {isLoading ? (
-                <Loader2 className="w-5 h-5 animate-spin" />
-              ) : (
-                <div className="flex items-center gap-2">
-                  <Send className="w-4 h-4" />
-                  <span>Send</span>
-                </div>
-              )}
-            </Button>
-          </form>
-        </div>
-      </footer>
-    </div>
+        {/* Input Form */}
+        <footer className="border-t border-gray-700/50 bg-gray-900/50 backdrop-blur-xl p-6">
+          <div className="max-w-5xl mx-auto">
+            <form onSubmit={handleFormSubmit} className="flex gap-4">
+              <Input
+                type="text"
+                value={input}
+                onChange={(e) => setInput(e.target.value)}
+                placeholder="Hỏi về tài liệu của bạn..."
+                disabled={isLoading}
+                className="flex-1 h-12 bg-gray-800/50 border-gray-700 focus:border-purple-500 focus:ring-purple-500/20 text-base"
+              />
+              <Button
+                type="submit"
+                disabled={isLoading || !input.trim()}
+                className="h-12 px-6 bg-purple-600 hover:bg-purple-500 text-white font-medium transition-colors min-w-[100px] disabled:opacity-50"
+              >
+                {isLoading ? (
+                  <Loader2 className="w-5 h-5 animate-spin" />
+                ) : (
+                  <div className="flex items-center gap-2">
+                    <Send className="w-4 h-4" />
+                    <span>Send</span>
+                  </div>
+                )}
+              </Button>
+            </form>
+          </div>
+        </footer>
+      </div>
+    </ChatLayout>
   );
 }
 
@@ -435,29 +437,40 @@ const MarkdownRenderer = React.memo(({ content }: { content: string }) => {
 });
 MarkdownRenderer.displayName = "MarkdownRenderer";
 
-function MessageItem({ message, isLoading, copiedState, onCopy }: MessageItemProps) {
-  const isUser = message.role === 'user';
+function MessageItem({
+  message,
+  isLoading,
+  copiedState,
+  onCopy,
+}: MessageItemProps) {
+  const isUser = message.role === "user";
   const [showSources, setShowSources] = useState(false);
 
-  const time = new Date(message.timestamp).toLocaleTimeString('vi-VN', {
-    hour: '2-digit',
-    minute: '2-digit'
+  const time = new Date(message.timestamp).toLocaleTimeString("vi-VN", {
+    hour: "2-digit",
+    minute: "2-digit",
   });
 
   const showLoading = isLoading && !isUser && !message.content;
 
   return (
-    <div className={cn(
-      "group relative flex w-full gap-3 px-0 animate-fade-in",
-      isUser ? "flex-row-reverse ml-auto sm:max-w-[85%]" : "flex-row sm:max-w-full"
-    )}>
-      {/* Avatar */}
-      <div className={cn(
-        "flex h-8 w-8 shrink-0 select-none items-center justify-center rounded-full self-start",
+    <div
+      className={cn(
+        "group relative flex w-full gap-3 px-0 animate-fade-in",
         isUser
-          ? "bg-blue-600/15 ring-2 ring-blue-600/30"
-          : "bg-purple-600/15 ring-2 ring-purple-600/30"
-      )}>
+          ? "flex-row-reverse ml-auto sm:max-w-[85%]"
+          : "flex-row sm:max-w-full"
+      )}
+    >
+      {/* Avatar */}
+      <div
+        className={cn(
+          "flex h-8 w-8 shrink-0 select-none items-center justify-center rounded-full self-start",
+          isUser
+            ? "bg-blue-600/15 ring-2 ring-blue-600/30"
+            : "bg-purple-600/15 ring-2 ring-purple-600/30"
+        )}
+      >
         {isUser ? (
           <User className="h-5 w-5 text-blue-400" />
         ) : (
@@ -466,14 +479,21 @@ function MessageItem({ message, isLoading, copiedState, onCopy }: MessageItemPro
       </div>
 
       {/* Message Content */}
-      <div className={cn("flex flex-col flex-1", isUser ? "items-end" : "items-start")}>
+      <div
+        className={cn(
+          "flex flex-col flex-1",
+          isUser ? "items-end" : "items-start"
+        )}
+      >
         {/* Main message bubble */}
-        <div className={cn(
-          "relative rounded-xl px-4 py-3 text-sm leading-relaxed ring-1 shadow-lg",
-          isUser
-            ? "bg-blue-600 text-blue-50 w-fit ring-blue-600/50 rounded-br-sm"
-            : "bg-gray-800/80 ring-gray-700 text-gray-100 rounded-tl-sm w-full"
-        )}>
+        <div
+          className={cn(
+            "relative rounded-xl px-4 py-3 text-sm leading-relaxed ring-1 shadow-lg",
+            isUser
+              ? "bg-blue-600 text-blue-50 w-fit ring-blue-600/50 rounded-br-sm"
+              : "bg-gray-800/80 ring-gray-700 text-gray-100 rounded-tl-sm w-full"
+          )}
+        >
           {showLoading ? (
             <div className="flex items-center justify-center h-full">
               <Loader2 className="w-4 h-4 animate-spin text-purple-400" />
@@ -512,10 +532,12 @@ function MessageItem({ message, isLoading, copiedState, onCopy }: MessageItemPro
         )}
 
         {/* Timestamp */}
-        <time className={cn(
-          "text-[10px] text-gray-500 mt-1",
-          isUser ? "mr-1" : "ml-1"
-        )}>
+        <time
+          className={cn(
+            "text-[10px] text-gray-500 mt-1",
+            isUser ? "mr-1" : "ml-1"
+          )}
+        >
           {showLoading ? "Đang tìm kiếm tài liệu..." : time}
           {message.model_used && !showLoading && (
             <span className="ml-2 text-purple-500">• {message.model_used}</span>
@@ -533,8 +555,8 @@ function MessageItem({ message, isLoading, copiedState, onCopy }: MessageItemPro
             title="Copy message"
             className={`h-7 w-7 rounded-full cursor-pointer ${
               copiedState
-                ? 'bg-green-600 hover:bg-green-700 text-white'
-                : 'bg-gray-600 hover:bg-gray-500 text-white'
+                ? "bg-green-600 hover:bg-green-700 text-white"
+                : "bg-gray-600 hover:bg-gray-500 text-white"
             }`}
           >
             {copiedState ? (
@@ -557,9 +579,9 @@ interface SourceCardProps {
 
 function SourceCard({ source, index }: SourceCardProps) {
   const [expanded, setExpanded] = useState(false);
-  const displayContent = expanded 
-    ? source.content 
-    : source.content.slice(0, 150) + (source.content.length > 150 ? '...' : '');
+  const displayContent = expanded
+    ? source.content
+    : source.content.slice(0, 150) + (source.content.length > 150 ? "..." : "");
 
   return (
     <div className="bg-gray-900/50 border border-gray-700 rounded-lg p-3 text-xs">
@@ -577,9 +599,7 @@ function SourceCard({ source, index }: SourceCardProps) {
         </span>
       </div>
 
-      <p className="text-gray-300 leading-relaxed mb-2">
-        {displayContent}
-      </p>
+      <p className="text-gray-300 leading-relaxed mb-2">{displayContent}</p>
 
       {source.content.length > 150 && (
         <Button
@@ -588,12 +608,15 @@ function SourceCard({ source, index }: SourceCardProps) {
           size="sm"
           className="text-xs text-purple-400 hover:text-purple-300 p-0 h-auto"
         >
-          {expanded ? 'Thu gọn' : 'Xem thêm'}
+          {expanded ? "Thu gọn" : "Xem thêm"}
         </Button>
       )}
 
       <div className="mt-2 flex gap-3 text-[10px] text-gray-500">
-        <span>Chunk {(source.metadata.chunk_index || 0) + 1}/{source.metadata.total_chunks || 1}</span>
+        <span>
+          Chunk {(source.metadata.chunk_index || 0) + 1}/
+          {source.metadata.total_chunks || 1}
+        </span>
         <span>•</span>
         <span>Chunk ID: {source.chunk_id}</span>
       </div>
@@ -602,7 +625,11 @@ function SourceCard({ source, index }: SourceCardProps) {
 }
 
 // --- Component Welcome ---
-const RAGWelcome = ({ onPromptClick }: { onPromptClick: (prompt: string) => void }) => {
+const RAGWelcome = ({
+  onPromptClick,
+}: {
+  onPromptClick: (prompt: string) => void;
+}) => {
   const prompts = [
     "Tìm thông tin về điều khoản thanh toán trong hợp đồng",
     "Tóm tắt các điều khoản chính trong tài liệu",
@@ -616,7 +643,8 @@ const RAGWelcome = ({ onPromptClick }: { onPromptClick: (prompt: string) => void
         RAG Document Assistant
       </h2>
       <p className="text-sm text-gray-500 max-w-md mb-6">
-        Hỏi bất kỳ điều gì về tài liệu của bạn. Hệ thống sẽ tìm kiếm và trả lời dựa trên nội dung tài liệu với streaming real-time.
+        Hỏi bất kỳ điều gì về tài liệu của bạn. Hệ thống sẽ tìm kiếm và trả lời
+        dựa trên nội dung tài liệu với streaming real-time.
       </p>
 
       {/* Suggested prompts */}
